@@ -86,6 +86,22 @@ slk react general 1234567890.123456 thumbsup
 | `slk starred` | `star` | Show VIP users and starred items |
 | `slk pins <channel>` | `pin` | Show pinned items in a channel |
 
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--ts` | Show raw Slack timestamps (useful for getting ts to read threads) |
+| `--no-emoji` | Disable emoji in output (or set `NO_EMOJI=1`) |
+
+```bash
+# Get timestamps to use with thread command
+slk read general 10 --ts
+# Output: [1/30/2026, 11:41:19 AM ts:1769753479.788949] User [3 replies]:
+
+# Then read that thread
+slk thread general 1769753479.788949
+```
+
 ### Drafts
 
 Drafts sync to Slack — they appear in the Slack editor UI.

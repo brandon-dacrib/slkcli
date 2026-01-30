@@ -75,7 +75,7 @@ export async function channels() {
   }
 }
 
-export async function read(channelRef, count = 20) {
+export async function read(channelRef, count = 20, showTs = false) {
   const channel = await resolveChannel(channelRef);
   const users = await getUsers();
   const data = await slackApi("conversations.history", {
@@ -91,8 +91,9 @@ export async function read(channelRef, count = 20) {
   for (const msg of messages) {
     const who = userName(users, msg.user);
     const time = formatTs(msg.ts);
+    const tsStr = showTs ? ` ts:${msg.ts}` : "";
     const thread = msg.reply_count ? ` [${msg.reply_count} replies]` : "";
-    console.log(`[${time}] ${who}${thread}:`);
+    console.log(`[${time}${tsStr}] ${who}${thread}:`);
     console.log(`  ${msg.text}`);
     if (msg.files?.length) {
       for (const f of msg.files) {

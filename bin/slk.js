@@ -11,6 +11,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 const supportsEmoji = !process.env.NO_EMOJI && !process.argv.includes("--no-emoji");
+const showTs = process.argv.includes("--ts");
 const e = (emoji, fallback = "") => supportsEmoji ? emoji + " " : fallback;
 
 const HELP = `${e("💬")}slk — Slack CLI for macOS (auto-auth from Slack desktop app)
@@ -37,6 +38,7 @@ Drafts (synced to Slack UI):
   slk draft drop <id>                     Delete a draft
 
 Settings:
+  --ts                                    Show raw Slack timestamps (for thread commands)
   --no-emoji                              Disable emoji output (or set NO_EMOJI=1)
 
 Channels: name ("general") or ID ("C08A8AQ2AFP"). Aliases shown in parens.
@@ -68,8 +70,8 @@ async function main() {
 
       case "read":
       case "r":
-        if (!args[1]) { console.error("Usage: slk read <channel> [count]"); process.exit(1); }
-        await cmd.read(args[1], parseInt(args[2]) || 20);
+        if (!args[1]) { console.error("Usage: slk read <channel> [count] [--ts]"); process.exit(1); }
+        await cmd.read(args[1], parseInt(args[2]) || 20, showTs);
         break;
 
       case "send":
