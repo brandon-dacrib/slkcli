@@ -1,0 +1,181 @@
+/**
+ * Slack auth — extracts session credentials from the Slack desktop app on macOS.
+ *
+ * 1. Keychain → "Slack Safe Storage" password
+ * 2. Cookies SQLite → encrypted `d` cookie → AES-128-CBC decrypt
+ * 3. LevelDB files → `xoxc-` token (string scan)
+ */
+
+import { execSync, spawnSync } from "child_process";
+import { readFileSync, readdirSync, copyFileSync, unlinkSync, writeFileSync } from "fs";
+import { join } from "path";
+import { homedir, tmpdir } from "os";
+import { pbkdf2Sync } from "crypto";
+
+const SLACK_DIR = join(homedir(), "Library", "Application Support", "Slack");
+const LEVELDB_DIR = join(SLACK_DIR, "Local Storage", "leveldb");
+const COOKIES_DB = join(SLACK_DIR, "Cookies");
+
+let cachedCreds = null;
+
+function getKeychainKey() {
+  return Buffer.from(
+    execSync('security find-generic-password -s "Slack Safe Storage" -w', {
+      encoding: "utf-8",
+    }).trim()
+  );
+}
+
+function decryptCookie() {
+  const tmpDb = join(tmpdir(), `slk_cookies_${Date.now()}.db`);
+  copyFileSync(COOKIES_DB, tmpDb);
+
+  try {
+    const hex = execSync(
+      `sqlite3 "${tmpDb}" "SELECT hex(encrypted_value) FROM cookies WHERE name='d' AND host_key='.slack.com' LIMIT 1;"`,
+      { encoding: "utf-8" }
+    ).trim();
+
+    if (!hex) throw new Error("No 'd' cookie found in Slack cookie store");
+
+    const encrypted = Buffer.from(hex, "hex");
+
+    if (encrypted.subarray(0, 3).toString() !== "v10") {
+      throw new Error("Unknown cookie encryption format");
+    }
+
+    const data = encrypted.subarray(3);
+    const aesKey = pbkdf2Sync(getKeychainKey(), "saltysalt", 1003, 16, "sha1");
+    const iv = Buffer.alloc(16, " ");
+
+    // Decrypt via openssl using spawnSync for clean binary output
+    const tmpEnc = join(tmpdir(), `slk_enc_${Date.now()}.bin`);
+    writeFileSync(tmpEnc, data);
+
+    const result = spawnSync("openssl", [
+      "enc", "-aes-128-cbc", "-d", "-nopad",
+      "-K", aesKey.toString("hex"),
+      "-iv", iv.toString("hex"),
+      "-in", tmpEnc,
+    ]);
+    const decrypted = result.stdout;
+
+    unlinkSync(tmpEnc);
+
+    if (!decrypted || decrypted.length === 0) {
+      throw new Error("Cookie decryption failed");
+    }
+
+    // Remove PKCS7 padding
+    const padLen = decrypted[decrypted.length - 1];
+    const unpadded = padLen <= 16 ? decrypted.subarray(0, -padLen) : decrypted;
+    const text = unpadded.toString("utf-8");
+
+    const idx = text.indexOf("xoxd-");
+    if (idx < 0) throw new Error("No xoxd- found in decrypted cookie");
+    return text.substring(idx);
+  } finally {
+    try { unlinkSync(tmpDb); } catch {}
+  }
+}
+
+function extractToken() {
+  const files = readdirSync(LEVELDB_DIR).filter(
+    (f) => f.endsWith(".ldb") || f.endsWith(".log")
+  );
+
+  const tokens = new Set();
+
+  for (const file of files) {
+    try {
+      const raw = readFileSync(join(LEVELDB_DIR, file));
+      const content = raw.toString("latin1");
+
+      // Method 1: direct regex (works for uncompressed entries)
+      for (const m of content.matchAll(/xoxc-[a-zA-Z0-9_-]{20,}/g)) {
+        tokens.add(m[0]);
+      }
+
+      // Method 2: Snappy-compressed LevelDB blocks mangle tokens.
+      // Use Python to properly decompress and extract from the JSON structure.
+      // Skip here — handled in extractTokenPython() below.
+    } catch {}
+  }
+
+  // Method 2: Use Python to extract tokens from Snappy-compressed LevelDB
+  // Python's regex on binary-stripped data handles compression artifacts better
+  try {
+    const pyResult = spawnSync("python3", ["-c", `
+import os, re
+path = os.path.expanduser("~/Library/Application Support/Slack/Local Storage/leveldb")
+for f in os.listdir(path):
+    if not (f.endswith(".ldb") or f.endswith(".log")): continue
+    data = open(os.path.join(path, f), "rb").read()
+    # Find all xoxc- positions and extract by reading the hex tail
+    pos = 0
+    while True:
+        idx = data.find(b"xoxc-", pos)
+        if idx < 0: break
+        pos = idx + 5
+        chunk = data[idx:idx+200]
+        # Find the 64-char hex tail
+        text = chunk.decode("latin1")
+        hm = re.search(r'[a-f0-9]{64}', text)
+        if not hm: continue
+        # Get all bytes from xoxc- to end of hex tail
+        end = text.index(hm.group()) + 64
+        raw = chunk[:end]
+        # Keep only printable token chars
+        clean = bytes(b for b in raw if chr(b) in '0123456789abcdef-xoc').decode()
+        # Validate structure
+        if re.match(r'^xoxc-\\d+-\\d+-\\d+-[a-f0-9]{64}$', clean):
+            print(clean)
+`], { encoding: "utf-8", timeout: 5000 });
+    if (pyResult.stdout) {
+      for (const line of pyResult.stdout.trim().split("\n")) {
+        if (line.startsWith("xoxc-")) tokens.add(line);
+      }
+    }
+  } catch {}
+
+  if (tokens.size === 0) {
+    throw new Error("No xoxc- token found. Is Slack running?");
+  }
+
+  // Return all candidates sorted by length desc; caller will validate
+  return [...tokens]
+    .filter((t) => t.length > 50) // filter truncated tokens
+    .sort((a, b) => b.length - a.length);
+}
+
+export function getCredentials(forceRefresh = false) {
+  if (cachedCreds && !forceRefresh) return cachedCreds;
+
+  const candidates = extractToken();
+  const cookie = decryptCookie();
+
+  // Validate each token candidate against the API
+  for (const token of candidates) {
+    try {
+      const result = spawnSync("curl", [
+        "-s", "https://slack.com/api/auth.test",
+        "-H", `Authorization: Bearer ${token}`,
+        "-b", `d=${cookie}`,
+      ], { encoding: "utf-8", timeout: 10000 });
+      const data = JSON.parse(result.stdout);
+      if (data.ok) {
+        cachedCreds = { token, cookie };
+        return cachedCreds;
+      }
+    } catch {}
+  }
+
+  // Fallback: return first candidate and let the API layer handle retry
+  cachedCreds = { token: candidates[0], cookie };
+  return cachedCreds;
+}
+
+export function refresh() {
+  cachedCreds = null;
+  return getCredentials(true);
+}

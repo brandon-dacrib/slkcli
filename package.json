@@ -1,0 +1,14 @@
+{
+  "name": "slk",
+  "version": "0.1.0",
+  "description": "Slack CLI for session-based access (macOS, Electron token extraction)",
+  "type": "module",
+  "bin": {
+    "slk": "./bin/slk.js"
+  },
+  "scripts": {
+    "dev": "node bin/slk.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
