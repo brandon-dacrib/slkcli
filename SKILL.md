@@ -26,6 +26,7 @@ slk users                             # List workspace users (alias: u)
 slk activity                          # All channels with unread indicators (alias: a)
 slk unread                            # Only channels with unreads, excludes muted (alias: ur)
 slk starred                           # VIP users + starred items (alias: star)
+slk saved [count] [--all]             # Saved for later items (alias: sv)
 slk pins <channel>                    # Pinned items in a channel (alias: pin)
 
 # Write

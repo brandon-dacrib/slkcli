@@ -333,6 +333,72 @@ export async function pins(channelRef) {
   }
 }
 
+export async function saved(count = 20, includeCompleted = false) {
+  const users = await getUsers();
+
+  // Build channel name map
+  const chData = await slackPaginate("conversations.list", {
+    types: "public_channel,private_channel,mpim,im",
+    exclude_archived: true,
+  });
+  const chMap = {};
+  if (chData.ok) {
+    for (const ch of chData.channels) {
+      chMap[ch.id] = ch.name || (ch.user ? `DM:${userName(users, ch.user)}` : ch.id);
+    }
+  }
+
+  const data = await slackApi("saved.list", { count });
+  if (!data.ok) {
+    console.error(`Error: ${data.error}`);
+    process.exit(1);
+  }
+
+  const items = data.saved_items || [];
+  const counts = data.counts || {};
+  console.log(`📑 Saved for Later — ${counts.uncompleted_count || 0} active, ${counts.completed_count || 0} completed\n`);
+
+  if (!items.length) {
+    console.log("No saved items.");
+    return;
+  }
+
+  for (const item of items) {
+    if (!includeCompleted && item.state === "completed") continue;
+
+    const chName = chMap[item.item_id] || item.item_id;
+    const savedAt = formatTs(item.date_created);
+    const state = item.state === "completed" ? " ✅" : "";
+
+    // Fetch the actual message
+    try {
+      const msgData = await slackApi("conversations.history", {
+        channel: item.item_id,
+        latest: item.ts,
+        inclusive: true,
+        limit: 1,
+      });
+      if (msgData.ok && msgData.messages?.[0]) {
+        const msg = msgData.messages[0];
+        const who = userName(users, msg.user);
+        const msgTime = formatTs(msg.ts);
+        console.log(`[saved ${savedAt}]${state} #${chName} — ${who} (${msgTime}):`);
+        console.log(`  ${(msg.text || "").substring(0, 300)}`);
+        if (msg.files?.length) {
+          for (const f of msg.files) {
+            console.log(`  📎 ${f.name} (${f.mimetype})`);
+          }
+        }
+      } else {
+        console.log(`[saved ${savedAt}]${state} #${chName} (ts: ${item.ts}) — could not fetch message`);
+      }
+    } catch {
+      console.log(`[saved ${savedAt}]${state} #${chName} (ts: ${item.ts}) — access denied or channel not found`);
+    }
+    console.log();
+  }
+}
+
 export async function react(channelRef, ts, emoji) {
   const channel = await resolveChannel(channelRef);
   const data = await slackApi("reactions.add", {

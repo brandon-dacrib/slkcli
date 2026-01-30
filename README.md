@@ -59,6 +59,9 @@ slk unread
 # See starred items and VIP users
 slk starred
 
+# See saved for later items
+slk saved
+
 # See pinned messages in a channel
 slk pins general
 
@@ -84,6 +87,7 @@ slk react general 1234567890.123456 thumbsup
 | `slk activity` | `a` | Show all channel activity with unread/mention counts |
 | `slk unread` | `ur` | Show only channels with unreads (excludes muted) |
 | `slk starred` | `star` | Show VIP users and starred items |
+| `slk saved [count]` | `sv` | Show saved for later items (active by default, `--all` includes completed) |
 | `slk pins <channel>` | `pin` | Show pinned items in a channel |
 
 ### Flags
@@ -92,6 +96,7 @@ slk react general 1234567890.123456 thumbsup
 |------|-------------|
 | `--ts` | Show raw Slack timestamps (useful for getting ts to read threads) |
 | `--no-emoji` | Disable emoji in output (or set `NO_EMOJI=1`) |
+| `--all` | Include completed items in `slk saved` |
 
 ```bash
 # Get timestamps to use with thread command

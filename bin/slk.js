@@ -28,6 +28,7 @@ Commands:
   slk activity          (a)               Channel activity with unread/mention counts
   slk unread            (ur)              Channels with unreads (excludes muted)
   slk starred           (star)            VIP users + starred items
+  slk saved [n]         (sv)              Saved for later items (--all includes completed)
   slk pins <ch>         (pin)             Pinned items in a channel
 
 Drafts (synced to Slack UI):
@@ -117,6 +118,11 @@ async function main() {
       case "starred":
       case "star":
         await cmd.starred();
+        break;
+
+      case "saved":
+      case "sv":
+        await cmd.saved(parseInt(args[1]) || 20, args.includes("--all"));
         break;
 
       case "pins":
