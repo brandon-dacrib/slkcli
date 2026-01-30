@@ -27,6 +27,7 @@ export async function slackApi(method, params = {}, retried = false) {
     "drafts.delete",
     "drafts.update",
     "conversations.open",
+    "client.counts",
   ];
 
   const isWrite = writeMethods.some((m) => method.startsWith(m));

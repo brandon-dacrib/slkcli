@@ -12,9 +12,13 @@ import { join } from "path";
 import { homedir, tmpdir } from "os";
 import { pbkdf2Sync } from "crypto";
 
+import { existsSync, mkdirSync } from "fs";
+
 const SLACK_DIR = join(homedir(), "Library", "Application Support", "Slack");
 const LEVELDB_DIR = join(SLACK_DIR, "Local Storage", "leveldb");
 const COOKIES_DB = join(SLACK_DIR, "Cookies");
+const CACHE_DIR = join(homedir(), ".local", "slk");
+const TOKEN_CACHE = join(CACHE_DIR, "token-cache.json");
 
 let cachedCreds = null;
 
@@ -148,29 +152,63 @@ for f in os.listdir(path):
     .sort((a, b) => b.length - a.length);
 }
 
+function loadTokenCache() {
+  try {
+    if (existsSync(TOKEN_CACHE)) {
+      return JSON.parse(readFileSync(TOKEN_CACHE, "utf-8"));
+    }
+  } catch {}
+  return null;
+}
+
+function saveTokenCache(token) {
+  try {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(TOKEN_CACHE, JSON.stringify({ token, ts: Date.now() }));
+  } catch {}
+}
+
+function validateToken(token, cookie) {
+  try {
+    const result = spawnSync("curl", [
+      "-s", "https://slack.com/api/auth.test",
+      "-H", `Authorization: Bearer ${token}`,
+      "-b", `d=${cookie}`,
+    ], { encoding: "utf-8", timeout: 10000 });
+    const data = JSON.parse(result.stdout);
+    return data.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function getCredentials(forceRefresh = false) {
   if (cachedCreds && !forceRefresh) return cachedCreds;
 
-  const candidates = extractToken();
   const cookie = decryptCookie();
 
-  // Validate each token candidate against the API
-  for (const token of candidates) {
-    try {
-      const result = spawnSync("curl", [
-        "-s", "https://slack.com/api/auth.test",
-        "-H", `Authorization: Bearer ${token}`,
-        "-b", `d=${cookie}`,
-      ], { encoding: "utf-8", timeout: 10000 });
-      const data = JSON.parse(result.stdout);
-      if (data.ok) {
-        cachedCreds = { token, cookie };
-        return cachedCreds;
-      }
-    } catch {}
+  // Try cached token first (fastest path)
+  if (!forceRefresh) {
+    const cache = loadTokenCache();
+    if (cache?.token && validateToken(cache.token, cookie)) {
+      cachedCreds = { token: cache.token, cookie };
+      return cachedCreds;
+    }
   }
 
-  // Fallback: return first candidate and let the API layer handle retry
+  // Extract fresh tokens from LevelDB
+  const candidates = extractToken();
+
+  // Validate each candidate
+  for (const token of candidates) {
+    if (validateToken(token, cookie)) {
+      saveTokenCache(token);
+      cachedCreds = { token, cookie };
+      return cachedCreds;
+    }
+  }
+
+  // Fallback: return first candidate
   cachedCreds = { token: candidates[0], cookie };
   return cachedCreds;
 }

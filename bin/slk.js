@@ -22,6 +22,8 @@ Usage:
   slk thread <channel> <ts> [count]     Read a thread
   slk users                             List workspace users
   slk react <channel> <ts> <emoji>      React to a message
+  slk activity                          Show all channel activity
+  slk unread                            Show only channels with unreads
 
 Drafts (synced to Slack):
   slk draft <channel> <message>         Draft a channel message
@@ -79,6 +81,16 @@ async function main() {
           process.exit(1);
         }
         await cmd.react(args[1], args[2], args[3]);
+        break;
+
+      case "activity":
+      case "a":
+        await cmd.activity(false);
+        break;
+
+      case "unread":
+      case "ur":
+        await cmd.activity(true);
         break;
 
       case "drafts":

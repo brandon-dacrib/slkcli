@@ -173,6 +173,57 @@ export async function users() {
   }
 }
 
+export async function activity(unreadOnly = false) {
+  const users = await getUsers();
+
+  // Get unread counts
+  const counts = await slackApi("client.counts", {});
+  if (!counts.ok) {
+    console.error(`Error: ${counts.error}`);
+    process.exit(1);
+  }
+
+  // Build channel name map
+  const chData = await slackPaginate("conversations.list", {
+    types: "public_channel,private_channel,mpim,im",
+    exclude_archived: true,
+  });
+  const chMap = {};
+  if (chData.ok) {
+    for (const ch of chData.channels) {
+      chMap[ch.id] = ch.name || (ch.user ? `DM:${userName(users, ch.user)}` : ch.id);
+    }
+  }
+
+  // Merge all conversation types
+  const all = [
+    ...(counts.channels || []).map((c) => ({ ...c, type: "channel" })),
+    ...(counts.mpims || []).map((c) => ({ ...c, type: "group" })),
+    ...(counts.ims || []).map((c) => ({ ...c, type: "dm" })),
+  ];
+
+  // Threads summary
+  if (counts.threads?.has_unreads || counts.threads?.mention_count > 0) {
+    console.log(`🧵 Threads — ${counts.threads.mention_count} mentions, unreads: ${counts.threads.has_unreads}`);
+    console.log();
+  }
+
+  const filtered = unreadOnly ? all.filter((c) => c.has_unreads || c.mention_count > 0) : all;
+
+  if (filtered.length === 0) {
+    console.log(unreadOnly ? "No unreads! 🎉" : "No activity.");
+    return;
+  }
+
+  for (const ch of filtered) {
+    const name = chMap[ch.id] || ch.id;
+    const prefix = ch.type === "dm" ? "💬" : ch.type === "group" ? "👥" : "#";
+    const mentions = ch.mention_count > 0 ? ` (${ch.mention_count} mentions)` : "";
+    const unread = ch.has_unreads ? " •" : "";
+    console.log(`${prefix} ${name}${unread}${mentions}`);
+  }
+}
+
 export async function react(channelRef, ts, emoji) {
   const channel = await resolveChannel(channelRef);
   const data = await slackApi("reactions.add", {
