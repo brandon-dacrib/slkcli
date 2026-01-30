@@ -47,7 +47,7 @@ export async function draftUser(userId, message) {
     process.exit(1);
   }
   const channelId = conv.channel.id;
-  const data = await createDraft(channelId, null, [userId], message);
+  const data = await createDraft(channelId, null, null, message);
   if (data.ok) {
     console.log(`📝 Draft saved → DM @${userId} (${data.draft.id})`);
     console.log(`   Check Slack — draft icon should appear.`);
@@ -89,7 +89,23 @@ export async function listDrafts() {
  * Delete a draft.
  */
 export async function dropDraft(draftId) {
-  const data = await slackApi("drafts.delete", { id: draftId });
+  // Need client_last_updated_ts to delete — fetch it first
+  const list = await slackApi("drafts.list", {});
+  if (!list.ok) {
+    console.error(`❌ Failed to list drafts: ${list.error}`);
+    process.exit(1);
+  }
+
+  const draft = (list.drafts || []).find((d) => d.id === draftId);
+  if (!draft) {
+    console.error(`❌ Draft ${draftId} not found.`);
+    process.exit(1);
+  }
+
+  const data = await slackApi("drafts.delete", {
+    draft_id: draftId,
+    client_last_updated_ts: draft.last_updated_ts,
+  });
   if (data.ok) {
     console.log(`🗑  Draft ${draftId} deleted.`);
   } else {
