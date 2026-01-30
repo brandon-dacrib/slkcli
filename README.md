@@ -1,10 +1,10 @@
-# slk — session-based Slack CLI for macOS
+# slk 💬 — Slack CLI for macOS, so your agents can read and send messages
 
-`slk` is a fast Slack CLI that extracts auth from the Slack desktop app automatically. Read messages, send messages, search, manage drafts, and track unread activity — all from your terminal.
+`slk` is a Slack command-line tool for macOS that auto-extracts auth from the Slack desktop app. Read channels, send messages, search, manage drafts, track unreads, and view pins — no tokens, no OAuth, no config.
 
-Built for agents and humans. Zero dependencies. Zero config.
+Built for AI agents and terminal workflows. Zero dependencies. Zero setup.
 
-> **Disclaimer:** This project is **not affiliated with, endorsed by, or associated with Slack Technologies or Salesforce**. It is an independent CLI tool built for personal productivity and agent automation, and works only on macOS.
+> **Not affiliated with Slack.** This is an independent Slack CLI built for personal productivity and agent automation. It uses session credentials from the Slack desktop app and works only on macOS. Use at your own discretion.
 
 ## Install
 
@@ -42,6 +42,12 @@ slk search "deployment failed"
 # Check what's unread
 slk unread
 
+# See starred items and VIP users
+slk starred
+
+# See pinned messages in a channel
+slk pins general
+
 # Read a thread
 slk thread general 1234567890.123456
 
@@ -63,6 +69,8 @@ slk react general 1234567890.123456 thumbsup
 | `slk react <channel> <ts> <emoji>` | | Add an emoji reaction to a message |
 | `slk activity` | `a` | Show all channel activity with unread/mention counts |
 | `slk unread` | `ur` | Show only channels with unreads (excludes muted) |
+| `slk starred` | `star` | Show VIP users and starred items |
+| `slk pins <channel>` | `pin` | Show pinned items in a channel |
 
 ### Drafts
 
@@ -89,6 +97,16 @@ slk read C08A8AQ2AFP       # by ID
 ## Authentication
 
 `slk` uses the credentials already stored by the Slack desktop app. No OAuth flows, no manual token management.
+
+### Keychain access prompt
+
+On first run, macOS will show a Keychain dialog asking whether to allow access to "Slack Safe Storage":
+
+- **Allow** — grants one-time access. You'll be prompted again next time slk needs to decrypt the cookie.
+- **Always Allow** — grants permanent access for this binary. No future prompts.
+- **Deny** — blocks access. slk cannot authenticate.
+
+> **Caution:** Choosing "Always Allow" means any process running as your user that invokes the `slk` binary (or the `security` command targeting "Slack Safe Storage") can read the encryption key without a prompt. This is convenient but reduces the security boundary — any code running in your terminal (scripts, agents, other CLI tools) could trigger credential extraction silently. On a personal machine this is a reasonable trade-off. On a shared or managed machine, prefer "Allow" so you get prompted each time and maintain visibility into access.
 
 ### How it works
 
@@ -146,6 +164,9 @@ slk search "PR review needed"
 
 # Check what needs attention
 slk unread
+
+# See pinned context in a channel
+slk pins engineering
 
 # Send a message
 slk send engineering "Build passed on main"

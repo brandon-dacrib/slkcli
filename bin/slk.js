@@ -10,32 +10,49 @@ import * as drafts from "../src/drafts.js";
 const args = process.argv.slice(2);
 const command = args[0];
 
-const HELP = `
-slk — Slack CLI (session-based auth, macOS)
+const supportsEmoji = !process.env.NO_EMOJI && !process.argv.includes("--no-emoji");
+const e = (emoji, fallback = "") => supportsEmoji ? emoji + " " : fallback;
 
-Usage:
-  slk auth                              Test authentication
-  slk channels                          List channels
-  slk read <channel> [count]            Read recent messages
-  slk send <channel> <message>          Send a message
-  slk search <query> [count]            Search messages
-  slk thread <channel> <ts> [count]     Read a thread
-  slk users                             List workspace users
-  slk react <channel> <ts> <emoji>      React to a message
-  slk activity                          Show all channel activity
-  slk unread                            Show only channels with unreads
-  slk starred                           Show VIP users + starred items
-  slk pins <channel>                    Show pinned items in a channel
+const HELP = `${e("💬")}slk — Slack CLI for macOS (auto-auth from Slack desktop app)
 
-Drafts (synced to Slack):
-  slk draft <channel> <message>         Draft a channel message
-  slk draft thread <ch> <ts> <message>  Draft a thread reply
-  slk draft user <user_id> <message>    Draft a DM
-  slk drafts                            List active drafts
-  slk draft drop <draft_id>             Delete a draft
+Commands:
+  slk auth                                Test auth, show user/team info
+  slk channels          (ch)              List channels with member counts
+  slk users             (u)               List workspace users with statuses
+  slk read <ch> [n]     (r)               Read last n messages (default: 20)
+  slk send <ch> <msg>   (s)               Send a message
+  slk search <query> [n]                  Search messages across workspace
+  slk thread <ch> <ts> [n]  (t)           Read thread replies (default: 50)
+  slk react <ch> <ts> <emoji>             Add emoji reaction
+  slk activity          (a)               Channel activity with unread/mention counts
+  slk unread            (ur)              Channels with unreads (excludes muted)
+  slk starred           (star)            VIP users + starred items
+  slk pins <ch>         (pin)             Pinned items in a channel
 
-Channel can be a name (e.g. "ai-coding") or ID (e.g. "C08A8AQ2AFP").
-`;
+Drafts (synced to Slack UI):
+  slk draft <ch> <msg>                    Draft a channel message
+  slk draft thread <ch> <ts> <msg>        Draft a thread reply
+  slk draft user <user_id> <msg>          Draft a DM
+  slk drafts                              List active drafts
+  slk draft drop <id>                     Delete a draft
+
+Settings:
+  --no-emoji                              Disable emoji output (or set NO_EMOJI=1)
+
+Channels: name ("general") or ID ("C08A8AQ2AFP"). Aliases shown in parens.
+
+Examples:
+  slk read general 50                     Last 50 messages from #general
+  slk send engineering "build passed"     Send to #engineering
+  slk search "deploy failed" 10           Search with limit
+  slk thread general 1706000000.000000    Read a thread
+  slk react general 1706000000.000000 eyes  React with :eyes:
+  slk draft general "PR summary..."       Save draft in Slack UI
+  slk unread                              What needs attention?
+
+Auth: reads credentials from the Slack desktop app automatically.
+Cache: ~/.local/slk/token-cache.json (auto-validated, auto-refreshed).
+Docs:  https://github.com/therohitdas/slkcli`;
 
 async function main() {
   try {
