@@ -173,11 +173,30 @@ export async function users() {
   }
 }
 
+async function getMutedChannels() {
+  const prefs = await slackApi("users.prefs.get", {});
+  if (!prefs.ok) return new Set();
+
+  const allNotifs = prefs.prefs?.all_notifications_prefs;
+  if (!allNotifs) return new Set();
+
+  const parsed = typeof allNotifs === "string" ? JSON.parse(allNotifs) : allNotifs;
+  const muted = new Set();
+  for (const [chId, chPrefs] of Object.entries(parsed.channels || {})) {
+    if (chPrefs.muted) muted.add(chId);
+  }
+  return muted;
+}
+
 export async function activity(unreadOnly = false) {
   const users = await getUsers();
 
-  // Get unread counts
-  const counts = await slackApi("client.counts", {});
+  // Get unread counts + muted channels in parallel
+  const [counts, mutedSet] = await Promise.all([
+    slackApi("client.counts", {}),
+    getMutedChannels(),
+  ]);
+
   if (!counts.ok) {
     console.error(`Error: ${counts.error}`);
     process.exit(1);
@@ -208,7 +227,13 @@ export async function activity(unreadOnly = false) {
     console.log();
   }
 
-  const filtered = unreadOnly ? all.filter((c) => c.has_unreads || c.mention_count > 0) : all;
+  // Filter: unreads only, and exclude muted channels
+  let filtered = all;
+  if (unreadOnly) {
+    filtered = filtered.filter(
+      (c) => (c.has_unreads || c.mention_count > 0) && !mutedSet.has(c.id)
+    );
+  }
 
   if (filtered.length === 0) {
     console.log(unreadOnly ? "No unreads! 🎉" : "No activity.");
@@ -217,10 +242,12 @@ export async function activity(unreadOnly = false) {
 
   for (const ch of filtered) {
     const name = chMap[ch.id] || ch.id;
+    const isMuted = mutedSet.has(ch.id);
     const prefix = ch.type === "dm" ? "💬" : ch.type === "group" ? "👥" : "#";
     const mentions = ch.mention_count > 0 ? ` (${ch.mention_count} mentions)` : "";
     const unread = ch.has_unreads ? " •" : "";
-    console.log(`${prefix} ${name}${unread}${mentions}`);
+    const muted = isMuted ? " 🔇" : "";
+    console.log(`${prefix} ${name}${unread}${mentions}${muted}`);
   }
 }
 
